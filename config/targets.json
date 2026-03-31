@@ -1,0 +1,28 @@
+{
+  "repo_path": "sample-data/sample-express-app",
+  "framework_hints": ["express", "fastify"],
+  "base_url": "https://api.example.com",
+  "api_version": "1.0.0",
+  "api_title": "Example API",
+  "api_description": "Auto-generated API documentation",
+  "output_format": "openapi-3.1",
+  "languages": ["curl", "javascript", "python"],
+  "include_patterns": [
+    "src/routes/**",
+    "src/api/**",
+    "app/controllers/**",
+    "routes/**"
+  ],
+  "exclude_patterns": [
+    "**/test/**",
+    "**/spec/**",
+    "**/__tests__/**",
+    "**/*.test.js",
+    "**/*.spec.js"
+  ],
+  "github": {
+    "owner": "your-org",
+    "repo": "your-api-repo",
+    "docs_branch": "gh-pages"
+  }
+}

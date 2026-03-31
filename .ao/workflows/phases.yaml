@@ -1,0 +1,219 @@
+phases:
+  scan-routes:
+    mode: command
+    command:
+      program: bash
+      args: ["-c", "bash scripts/scan-routes.sh"]
+      cwd_mode: project_root
+      timeout_secs: 60
+    capabilities:
+      mutates_state: true
+      writes_files: true
+
+  extract-endpoints:
+    mode: agent
+    agent: route-scanner
+    directive: |
+      Read the raw route scan output from data/raw-routes.txt.
+      Also read config/targets.json for framework hints and include/exclude patterns.
+
+      Parse each line to identify API route definitions. Group by resource/controller.
+      For each endpoint extract: method, path, source file, line number, handler name, middleware.
+
+      Write structured output to data/endpoints.json with this schema:
+      {
+        "framework_detected": "express",
+        "total_endpoints": 24,
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/users/:id",
+            "source_file": "src/routes/users.js",
+            "line_number": 45,
+            "handler": "getUserById",
+            "middleware": ["auth", "rateLimit"],
+            "resource_group": "Users"
+          }
+        ]
+      }
+
+      If no route definitions are found, set total_endpoints to 0.
+    capabilities:
+      mutates_state: true
+      writes_files: true
+    decision_contract:
+      required_fields: [verdict, reasoning, endpoint_count]
+      valid_verdicts: [has-endpoints, no-endpoints]
+
+  extract-schemas:
+    mode: agent
+    agent: schema-extractor
+    directive: |
+      Read data/endpoints.json for the list of endpoints with their source file locations.
+      For each endpoint, read the actual handler source code via filesystem MCP.
+
+      Extract complete request/response schemas by analyzing:
+      - Function parameters and type annotations
+      - Validation middleware (Zod, Joi, express-validator, Pydantic)
+      - ORM models referenced in responses
+      - TypeScript interfaces/types
+      - JSDoc or docstring annotations
+
+      Write output to data/schemas.json with this schema:
+      {
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/users/:id",
+            "summary": "Get user by ID",
+            "description": "Retrieves a single user record by their unique identifier",
+            "auth": {"type": "bearer", "required": true},
+            "path_params": [
+              {"name": "id", "type": "string", "format": "uuid", "description": "User UUID"}
+            ],
+            "query_params": [],
+            "request_body": null,
+            "responses": {
+              "200": {"description": "User found", "schema": {...}},
+              "401": {"description": "Unauthorized"},
+              "404": {"description": "User not found"}
+            }
+          }
+        ]
+      }
+    capabilities:
+      mutates_state: true
+      writes_files: true
+
+  generate-examples:
+    mode: agent
+    agent: example-generator
+    directive: |
+      Read data/schemas.json for endpoint schemas.
+      If data/review-feedback.md exists, read it and address ALL feedback points.
+
+      For each endpoint, generate three example variants:
+      1. curl — full command with -X, -H, -d flags, realistic data
+      2. JavaScript — fetch() with async/await, headers, body, error handling
+      3. Python — requests library, clean style, response parsing
+
+      Also generate an expected response body with realistic data for each example.
+
+      Write output to data/examples.json:
+      {
+        "examples": [
+          {
+            "method": "POST",
+            "path": "/auth/login",
+            "curl": "curl -X POST https://api.example.com/auth/login ...",
+            "javascript": "const response = await fetch('https://api.example.com/auth/login', {...})",
+            "python": "response = requests.post('https://api.example.com/auth/login', ...)",
+            "expected_response": {"token": "eyJhbG...", "expires_in": 3600},
+            "error_examples": [
+              {"status": 401, "body": {"error": "Invalid credentials"}}
+            ]
+          }
+        ]
+      }
+    capabilities:
+      mutates_state: true
+      writes_files: true
+
+  validate-examples:
+    mode: command
+    command:
+      program: bash
+      args: ["-c", "bash scripts/validate-examples.sh"]
+      cwd_mode: project_root
+      timeout_secs: 120
+    capabilities:
+      mutates_state: true
+      writes_files: true
+
+  format-openapi:
+    mode: agent
+    agent: schema-extractor
+    directive: |
+      Read all intermediate data:
+      - data/schemas.json — endpoint schemas
+      - data/examples.json — request/response examples
+      - data/validation-results.json — which examples passed validation
+      - templates/openapi-template.yaml — base OpenAPI spec skeleton
+      - templates/endpoint-page.md — markdown template for per-endpoint pages
+      - config/targets.json — for base URL and metadata
+
+      Assemble a complete, valid OpenAPI 3.1 specification:
+      - Info section with title, version, description
+      - Server URLs from config
+      - Paths with all endpoints, schemas, and examples
+      - Components/schemas for shared types (deduplicate)
+      - Security schemes
+
+      Write to output/openapi.yaml.
+
+      Also generate markdown documentation:
+      - output/docs/index.md — table of contents with all endpoints grouped by resource
+      - output/docs/endpoints/<resource>-<action>.md — per-endpoint page with:
+        - Description, auth requirements
+        - Request parameters and body schema
+        - Response schemas for each status code
+        - curl, JavaScript, Python examples
+        - Error response examples
+
+      Use the endpoint-page.md template for consistent formatting across all pages.
+    capabilities:
+      mutates_state: true
+      writes_files: true
+
+  review-docs:
+    mode: agent
+    agent: doc-reviewer
+    directive: |
+      Review the generated documentation for quality and completeness.
+
+      Read and evaluate:
+      - output/openapi.yaml — is it valid OpenAPI 3.1? Are all endpoints present?
+      - output/docs/index.md — does it list all endpoints? Is grouping logical?
+      - output/docs/endpoints/*.md — spot-check at least 5 endpoint pages
+      - data/schemas.json — cross-reference schemas against actual source code
+      - data/validation-results.json — are there validation failures?
+
+      Apply the 5-point quality checklist:
+      1. Completeness: every endpoint from data/endpoints.json has a doc page
+      2. Accuracy: schemas match handler code (spot-check via filesystem MCP)
+      3. Examples: all three formats present, syntactically correct, realistic data
+      4. Formatting: OpenAPI YAML is well-structured, markdown renders cleanly
+      5. Consistency: uniform naming, style, and terminology
+
+      If verdict is "rework", write specific feedback to data/review-feedback.md
+      describing exactly which endpoints/examples need fixes and what's wrong.
+    capabilities:
+      mutates_state: true
+      writes_files: true
+    decision_contract:
+      required_fields: [verdict, reasoning, quality_score]
+      valid_verdicts: [publish, rework, reject]
+
+  publish-docs:
+    mode: agent
+    agent: doc-publisher
+    directive: |
+      Publish the reviewed and approved documentation.
+
+      1. Read output/openapi.yaml and output/docs/ directory
+      2. Use GitHub MCP to create a branch "docs/api-update-{{subject_id}}"
+      3. Commit all files from output/docs/ and output/openapi.yaml
+      4. Create a PR to main with:
+         - Title: "docs: update API documentation (auto-generated)"
+         - Body: summary of endpoints documented, any changes from previous version
+      5. Write publish summary to output/publish-summary.md including:
+         - PR URL
+         - Total endpoints documented
+         - Files created/updated
+         - Timestamp
+
+      This is the final phase — the documentation is now available for review and merge.
+    capabilities:
+      mutates_state: true
+      writes_files: true
+      requires_commit: true

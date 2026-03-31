@@ -1,0 +1,10 @@
+schedules:
+  - id: weekly-docs-refresh
+    cron: "0 6 * * 1"
+    workflow_ref: generate-api-docs
+    enabled: true
+
+  - id: daily-endpoint-scan
+    cron: "0 8 * * *"
+    workflow_ref: quick-scan
+    enabled: true

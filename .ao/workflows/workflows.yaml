@@ -1,0 +1,44 @@
+default_workflow_ref: generate-api-docs
+
+workflows:
+  - id: generate-api-docs
+    name: "API Documentation Generator"
+    description: "Full pipeline — scan routes, extract schemas, generate examples, validate, format OpenAPI spec, review, and publish"
+    phases:
+      - scan-routes
+      - extract-endpoints:
+          on_verdict:
+            no-endpoints:
+              target: null
+      - extract-schemas
+      - generate-examples
+      - validate-examples
+      - format-openapi
+      - review-docs:
+          on_verdict:
+            rework:
+              target: generate-examples
+            reject:
+              target: null
+          max_rework_attempts: 3
+      - publish-docs
+    post_success:
+      merge:
+        strategy: squash
+        target_branch: main
+        create_pr: true
+        auto_merge: false
+        cleanup_worktree: true
+
+  - id: quick-scan
+    name: "Quick API Scan"
+    description: "Lightweight scan — just discover endpoints and output a summary without full doc generation"
+    phases:
+      - scan-routes
+      - extract-endpoints:
+          on_verdict:
+            no-endpoints:
+              target: null
+      - extract-schemas
+    post_success:
+      notify: "API scan complete — see data/schemas.json for endpoint inventory"

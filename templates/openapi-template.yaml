@@ -1,0 +1,124 @@
+openapi: "3.1.0"
+
+info:
+  title: "{{API_TITLE}}"
+  description: |
+    {{API_DESCRIPTION}}
+
+    > **Auto-generated documentation** — This spec was generated automatically from source code.
+    > Last updated: {{GENERATED_AT}}
+  version: "{{API_VERSION}}"
+  contact:
+    name: "API Support"
+    email: "api@example.com"
+  license:
+    name: "MIT"
+
+servers:
+  - url: "{{BASE_URL}}"
+    description: "Production"
+  - url: "http://localhost:3000"
+    description: "Local development"
+
+security:
+  - BearerAuth: []
+
+# PATHS: Replace this section with generated endpoint paths
+paths: {}
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token obtained from POST /auth/login"
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "API key for service-to-service authentication"
+
+  # SCHEMAS: Replace this section with extracted schemas
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: "Machine-readable error code"
+          example: "NOT_FOUND"
+        message:
+          type: string
+          description: "Human-readable error description"
+          example: "The requested resource was not found"
+        details:
+          type: object
+          description: "Additional error context (validation errors, etc.)"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 1
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          example: 20
+        total:
+          type: integer
+          example: 142
+        total_pages:
+          type: integer
+          example: 8
+
+  responses:
+    Unauthorized:
+      description: "Authentication required or token invalid"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "UNAUTHORIZED"
+            message: "A valid Bearer token is required"
+
+    Forbidden:
+      description: "Authenticated but insufficient permissions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "FORBIDDEN"
+            message: "You do not have permission to perform this action"
+
+    NotFound:
+      description: "Resource not found"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "NOT_FOUND"
+            message: "The requested resource was not found"
+
+    ValidationError:
+      description: "Request validation failed"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "VALIDATION_ERROR"
+            message: "Request validation failed"
+            details:
+              email: "Must be a valid email address"
+              password: "Must be at least 8 characters"
